@@ -91,7 +91,6 @@ def get_semantic_df(dataframe):  # 获取到对应额 dataframe 的语义特征 
     semantic_df = pd.DataFrame(np.empty((length, 4)),
                                columns=['ws_similarity', 'maximum_similarity',
                                         'median_similarity', 'mean_similarity'])
-
     for index, row in dataframe.iterrows():
         semantic_df.iloc[index, :] = dict_title_semantic(row['query_prediction'], row['title'])
         if index % 10000 == 0:
@@ -113,6 +112,7 @@ if __name__ == "__main__":
                                names=['prefix', 'query_prediction', 'title', 'tag', 'label'],
                                header=None, encoding='utf-8').astype(str)
     get_semantic_df(train_data).to_csv('../data/train_vec_4+64.csv', index=False)
+
 
     val_data = pd.read_table('../data/oppo_round1_vali_20180929.txt',
                              names=['prefix', 'query_prediction', 'title', 'tag', 'label'],

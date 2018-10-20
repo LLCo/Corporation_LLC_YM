@@ -23,7 +23,7 @@ test_data = pd.read_table('../data/oppo_round1_test_A_20180929.txt',
 train_data = train_data[train_data['label'] != '音乐' ]
 test_data['label'] = -1
 
-train_data = pd.concat([train_data,val_data])
+train_data = pd.concat([train_data, val_data])
 train_data['label'] = train_data['label'].apply(lambda x: int(x))
 test_data['label'] = test_data['label'].apply(lambda x: int(x))
 items = ['prefix', 'title', 'tag']

@@ -2,10 +2,16 @@
 '''
 @Author:
 
-@Date: 
+@Date: 10/17
 
 @Description:
-    
+
+线下：
+- cross validation score (f1) -: [0.7332284365612931, 0.7317559863169898, 0.7344130715207108, 0.7411646873658606, 0.7198949058531602] . Mean:  0.7320914175236028
+- whole validation score (f1) -: [0.760814176519424, 0.7561952727064614, 0.7620025088379518, 0.7647377886893718, 0.7587257777011098] . Mean:  0.7604951048908637
+
+线上： 0.7294
+
 '''
 
 import pandas as pd
@@ -15,35 +21,9 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import f1_score
 
 
-def lgb_f1_score(y_hat, data):
-    y_true = data.get_label()
-    y_hat = np.round(y_hat) # scikits f1 doesn't like probabilities
-    return 'f1', f1_score(y_true, y_hat), True
-
-
-def lgb_f1_objective(y_hat, y_true):
-    pass
-
-
-def logregobj(preds, dtrain):
-    '''
-    y_true : array-like of shape = [n_samples]
-        The target values.
-    y_pred : array-like of shape = [n_samples] or shape = [n_samples * n_classes] (for multi-class)
-        The predicted values.
-    :param preds:
-    :param dtrain:
-    :return:
-    '''
-    labels = dtrain.get_label()
-    grad = preds - labels
-    hess = preds * (1.0 - preds)
-    return grad, hess
-
-
 def lgb_f1_score_sk(y_hat, y_true):
     y_true = np.round(y_true)
-    y_hat = np.round(y_hat) # scikits f1 doesn't like probabilities
+    y_hat = np.round(y_hat)  # scikits f1 doesn't like probabilities
     return 'f1', f1_score(y_true, y_hat), True
 
 
@@ -69,18 +49,12 @@ test_data = pd.read_table('../data/oppo_round1_test_A_20180929.txt',
 Data preprocessing (clearing)
 '''
 
-train_data = train_data[train_data['label'] != '音乐']
-# train_data = pd.concat([train_data,val_data.copy()])
 train_data['label'] = train_data['label'].apply(lambda x: int(x))
 val_data['label'] = val_data['label'].apply(lambda x: int(x))
-# test_data['label'] = test_data['label'].apply(lambda x: int(x))
-
 
 '''
 Feature Enginnering
 '''
-
-# statistic feature ! --
 
 items = ['prefix', 'title', 'tag']
 temp = train_data.groupby(items, as_index=False)['label'].agg(
@@ -107,37 +81,43 @@ for i in range(len(items)):
         val_data = pd.merge(val_data, temp, on=item_g, how='left')
         test_data = pd.merge(test_data, temp, on=item_g, how='left')
 
-train_data_ = train_data.drop(['prefix', 'query_prediction', 'title', 'tag'], axis=1)
-val_data_ = val_data.drop(['prefix', 'query_prediction', 'title', 'tag'], axis=1)
-test_data_ = test_data.drop(['prefix', 'query_prediction', 'title', 'tag'], axis=1)
+# semantic feature - 31_3
 
-# dict {} 4 feature
-#
-# train_data_dict_df = pd.read_csv('../data/train_vec_4.csv')
-# val_data_dict_df = pd.read_csv('../data/val_vec_4.csv')
-# test_data_dict_df = pd.read_csv('../data/test_vec_4.csv')
-# dict_columns = ['ws_similarity', 'maximum_similarity', 'median_similarity', 'mean_similarity']
-# for item in dict_columns:
-#     train_data_[item] = train_data_dict_df[item]
-#     val_data_[item] = val_data_dict_df[item]
-#     test_data_[item] = test_data_dict_df[item]
-#
+train_data = pd.concat([train_data, pd.read_csv('../data/train_31_3.csv')], axis=1)
+val_data = pd.concat([val_data, pd.read_csv('../data/val_31_3.csv')], axis=1)
+test_data = pd.concat([test_data, pd.read_csv('../data/test_31_3.csv')], axis=1)
 
-# dict {} 31 feature (Yang)
+# semantic feature - 4
 
-# train_data_dict_df = pd.read_csv('../data/train_31.csv')
-# val_data_dict_df = pd.read_csv('../data/val_31.csv')
-# test_data_dict_df = pd.read_csv('../data/test_31.csv')
-# dict_columns = ['new_tag' + str(i) for i in range(31)]
-# for item in dict_columns:
-#     train_data_[item] = train_data_dict_df[item]
-#     val_data_[item] = val_data_dict_df[item]
-#     test_data_[item] = test_data_dict_df[item]
+train_data_dict_df = pd.read_csv('../data/train_vec_4_no_fix.csv')
+val_data_dict_df = pd.read_csv('../data/val_vec_4.csv')
+test_data_dict_df = pd.read_csv('../data/test_vec_4.csv')
+dict_columns = ['ws_similarity', 'maximum_similarity', 'median_similarity', 'mean_similarity']
+for item in dict_columns:
+    train_data[item] = train_data_dict_df[item]
+    val_data[item] = val_data_dict_df[item]
+    test_data[item] = test_data_dict_df[item]
 
+# one-hot of 'tag'
+
+train_data = pd.get_dummies(train_data, columns=['tag']).drop(['tag_推广'], axis=1)
+val_data = pd.get_dummies(val_data, columns=['tag']).drop(['tag_推广'], axis=1)
+test_data = pd.get_dummies(test_data, columns=['tag'])
+
+# drop useless feature
+
+train_data_ = train_data.drop(['prefix', 'query_prediction', 'title'], axis=1)
+val_data_ = val_data.drop(['prefix', 'query_prediction', 'title'], axis=1)
+test_data_ = test_data.drop(['prefix', 'query_prediction', 'title'], axis=1)
 
 '''
 Training
 '''
+print('Feature: ', train_data_.columns.values)
+print('- Nan Check! -')
+print('train_data_:\n', train_data_.isna().sum(axis=0))
+print('val_data_:\n', val_data_.isna().sum(axis=0))
+print('test_data_:\n', test_data_.isna().sum(axis=0))
 
 # Label Split
 X_train_data_ = np.array(train_data_.drop(['label'], axis=1))
@@ -165,13 +145,12 @@ print('================================')
 # Algorithm: LightGBM
 N = 5
 skf = StratifiedKFold(n_splits=N, random_state=42, shuffle=True)
-xx_logloss = []
+xx_f1 = []
 xx_submit = []
 valid_f1 = []
-LGBM_classify = lgb.LGBMClassifier(boosting_type='gbdt', objective=logregobj, num_leaves=32,
-                                   learning_rate=0.05, subsample_freq=5, n_estimators=5000, silent=True)
+LGBM_classify = lgb.LGBMClassifier(boosting_type='gbdt', objective='huber', num_leaves=32,
+                                   learning_rate=0.05, subsample_freq=5, n_estimators=5000, silent=False)
 
-# LGBM_classify.print_evaluation(period=50, show_stdv=True)
 for k, (train_loc, test_loc) in enumerate(skf.split(X_val_data_, y_val_data_)):
     print('train _K_ flod', k)
     X_train_combine = np.vstack([X_train_data_, X_val_data_[train_loc]])
@@ -179,14 +158,15 @@ for k, (train_loc, test_loc) in enumerate(skf.split(X_val_data_, y_val_data_)):
 
     LGBM_classify.fit(X_train_combine, Y_train_combine,
                       eval_set=(X_val_data_[test_loc], y_val_data_[test_loc]),
-                      early_stopping_rounds=50, eval_sample_weight=None, eval_metric=lgb_f1_score_sk)
-    # print(f1_score(X_vali_label_[test_vali], LGBM_classify.predict(X_vali_[test_vali], num_iteration=LGBM_classify.best_iteration_)))
-    xx_logloss.append(LGBM_classify._best_score['valid_0']['f1'])
+                      early_stopping_rounds=200, eval_sample_weight=None, eval_metric=lgb_f1_score_sk)
+
+    xx_f1.append(LGBM_classify._best_score['valid_0']['f1'])
     xx_submit.append(LGBM_classify.predict_proba(X_test_data, num_iteration=LGBM_classify.best_iteration_))
     valid_f1.append(f1_score(y_val_data_, LGBM_classify.predict(X_val_data_)))
 
-print('\n\nEventually score (f1) - cross subset:', np.mean(xx_logloss))
-print('Validation Score (f1): - whole set', valid_f1, '. Mean: ', np.mean(valid_f1))
+print('ReSet!')
+print('\n\n- cross validation score (f1) -:', xx_f1, '. Mean: ', np.mean(xx_f1))
+print('- whole validation score (f1) -:', valid_f1, '. Mean: ', np.mean(valid_f1))
 
 '''
 Save result
@@ -196,4 +176,4 @@ for i in xx_submit:
     s = s + i
 test_data_['pred_label'] = list(s[:, 1] / N)  # 二元分类中，概率分布对应了- 0，1 -
 test_data_['pred_label'] = test_data_['pred_label'].apply(lambda x: round(x))
-test_data_['pred_label'].to_csv('../data/Result_LLC_1016.csv', index=False)
+test_data_['pred_label'].to_csv('../data/Result_LLC_1017_pre ' + str(np.mean(xx_f1)) + '.csv', index=False)
